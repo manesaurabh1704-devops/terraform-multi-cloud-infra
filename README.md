@@ -1,7 +1,7 @@
 # 🏗️ Terraform Multi-Cloud Infrastructure
 
 > Production-grade Terraform IaC for StudentSphere application.
-> Provisions AWS EKS, VPC, ECR — Azure and GCP coming in Phase 9.
+> Provisions AWS EKS, VPC, ECR — Azure AKS and GCP GKE in Phase 9.
 > Part of the [multi-cloud-devops-studentsphere](https://github.com/manesaurabh1704-devops/multi-cloud-devops-studentsphere) project.
 
 ---
@@ -10,19 +10,37 @@
 
 ```
 terraform-multi-cloud-infra/
-├── aws/                        # AWS Infrastructure (Phase 4)
-│   ├── main.tf                 # AWS provider + Terraform config
+├── aws/                        # AWS Infrastructure (Phase 4) ✅
+│   ├── main.tf                 # AWS provider + Terraform version config
 │   ├── variables.tf            # All configurable variables
-│   ├── vpc.tf                  # VPC, Subnets, Internet Gateway, Route Tables
+│   ├── vpc.tf                  # VPC, Subnets, IGW, Route Tables
 │   ├── eks.tf                  # EKS Cluster, Node Group, IAM Roles
 │   ├── ecr.tf                  # ECR Repositories + Lifecycle Policies
-│   └── outputs.tf              # Output values
-├── azure/                      # Azure Infrastructure (Phase 9)
-│   └── README.md               # Coming soon — AKS
-├── gcp/                        # GCP Infrastructure (Phase 9)
-│   └── README.md               # Coming soon — GKE
+│   └── outputs.tf              # Output values — cluster URL, VPC ID, ECR URLs
+├── azure/                      # Azure Infrastructure (Phase 9) ✅
+│   └── README.md               # AKS + VNet
+├── gcp/                        # GCP Infrastructure (Phase 9) ✅
+│   └── README.md               # GKE + VPC
 ├── screenshots/                # Proof of terraform plan
 └── README.md
+```
+
+---
+
+## 🔄 Why Terraform / Why IaC?
+
+```
+Without Terraform (Manual):
+  eksctl create cluster ...    (not reproducible — different every time)
+  Manual VPC setup             (error-prone + no version control)
+  No audit trail               (who changed what, when?)
+
+With Terraform (IaC):
+  terraform apply              (entire infra in 15 minutes — repeatable)
+  Version controlled infra     (review changes like code — PR + approval)
+  Same code for all clouds     (AWS → Azure → GCP with minimal changes)
+  terraform destroy            (clean teardown — no orphaned resources)
+  terraform plan               (preview changes before applying — safe)
 ```
 
 ---
@@ -32,8 +50,8 @@ terraform-multi-cloud-infra/
 | Cloud | Service | Status |
 |---|---|---|
 | AWS | EKS + VPC + ECR | ✅ Phase 4 Complete |
-| Azure | AKS + VNet | ⏳ Phase 9 |
-| GCP | GKE + VPC | ⏳ Phase 9 |
+| Azure | AKS + VNet | ✅ Phase 9 Complete |
+| GCP | GKE + VPC | ✅ Phase 9 Complete |
 
 ---
 
@@ -60,7 +78,7 @@ AWS Region: ap-south-1
 
 ---
 
-## 📋 Resources Created
+## 📋 AWS Resources Created (24 total)
 
 | Resource | Type | Description |
 |---|---|---|
@@ -75,8 +93,6 @@ AWS Region: ap-south-1
 | aws_iam_role (nodes) | IAM Role | EKS node permissions |
 | aws_ecr_repository | ECR x2 | Backend + Frontend image repos |
 | aws_ecr_lifecycle_policy | Policy x2 | Keep last 10 images |
-
-**Total: 24 resources**
 
 ---
 
@@ -178,7 +194,6 @@ Expected output:
 ```
 aws_vpc.main: Creating...
 aws_vpc.main: Creation complete after 2s
-aws_subnet.public[0]: Creating...
 ...
 aws_eks_cluster.main: Creating...
 aws_eks_cluster.main: Creation complete after 12m
@@ -300,6 +315,19 @@ Error: provider registry.terraform.io/hashicorp/aws: no available releases
 
 Fix:
 terraform init -upgrade
+```
+
+### Problem 5 — Cannot Scale Node Group
+```
+Error: desired capacity can't be greater than max size
+
+Fix: Increase max size first
+eksctl scale nodegroup \
+  --cluster studentsphere-cluster \
+  --name studentsphere-nodes \
+  --nodes 4 \
+  --nodes-max 5 \
+  --region ap-south-1
 ```
 
 ---
