@@ -607,14 +607,20 @@ variable "node_count"        { default = 2                }  # Node count
 
 ## 📸 Output / Proof
 
-### Terraform Init
+### Terraform Init — AWS
 ![Terraform Init](screenshots/01-terraform-init.png)
 
-### Terraform Plan — 24 Resources
+### Terraform Plan — AWS 24 Resources
 ![Terraform Plan](screenshots/02-terraform-plan.png)
 
 ### GitHub — All Terraform Files
 ![GitHub Files](screenshots/03-github-terraform-files.png)
+
+### Terraform Apply — Azure AKS (9 Resources)
+![Azure Apply](screenshots/04-azure-terraform-apply.png)
+
+### Terraform Apply — GCP GKE (7 Resources)
+![GCP Apply](screenshots/05-gcp-terraform-apply.png)
 
 ---
 
