@@ -1,7 +1,7 @@
 # 🏗️ Terraform Multi-Cloud Infrastructure
 
 > Production-grade Terraform IaC for StudentSphere application.
-> Provisions AWS EKS, VPC, ECR — Azure AKS and GCP GKE in Phase 9.
+> Provisions AWS EKS, Azure AKS, and GCP GKE — all three clouds.
 > Part of the [multi-cloud-devops-studentsphere](https://github.com/manesaurabh1704-devops/multi-cloud-devops-studentsphere) project.
 
 ---
@@ -11,17 +11,25 @@
 ```
 terraform-multi-cloud-infra/
 ├── aws/                        # AWS Infrastructure (Phase 4) ✅
-│   ├── main.tf                 # AWS provider + Terraform version config
+│   ├── main.tf                 # AWS provider + Terraform config
 │   ├── variables.tf            # All configurable variables
 │   ├── vpc.tf                  # VPC, Subnets, IGW, Route Tables
 │   ├── eks.tf                  # EKS Cluster, Node Group, IAM Roles
 │   ├── ecr.tf                  # ECR Repositories + Lifecycle Policies
-│   └── outputs.tf              # Output values — cluster URL, VPC ID, ECR URLs
+│   └── outputs.tf              # Cluster URL, VPC ID, ECR URLs
 ├── azure/                      # Azure Infrastructure (Phase 9) ✅
-│   └── README.md               # AKS + VNet
-├── gcp/                        # GCP Infrastructure (Phase 9) ✅
-│   └── README.md               # GKE + VPC
-├── screenshots/                # Proof of terraform plan
+│   ├── main.tf                 # Azure provider config
+│   ├── variables.tf            # Subscription ID, region, cluster config
+│   ├── vnet.tf                 # VNet + Public/Private Subnet + NAT Gateway
+│   ├── aks.tf                  # AKS Cluster — nodes in private subnet
+│   └── outputs.tf              # Cluster name, endpoint, subnet IDs
+├── gcp/                        # GCP Infrastructure (Phase 10) ✅
+│   ├── main.tf                 # GCP provider config
+│   ├── variables.tf            # Project ID, region, zone, cluster config
+│   ├── vpc.tf                  # VPC + Public/Private Subnet + Cloud NAT
+│   ├── gke.tf                  # GKE Cluster + Node Pool — private nodes
+│   └── outputs.tf              # Cluster name, endpoint, project ID
+├── screenshots/                # Proof of terraform plan/apply
 └── README.md
 ```
 
@@ -38,7 +46,7 @@ Without Terraform (Manual):
 With Terraform (IaC):
   terraform apply              (entire infra in 15 minutes — repeatable)
   Version controlled infra     (review changes like code — PR + approval)
-  Same code for all clouds     (AWS → Azure → GCP with minimal changes)
+  Same workflow for all clouds (AWS → Azure → GCP — learn once, use everywhere)
   terraform destroy            (clean teardown — no orphaned resources)
   terraform plan               (preview changes before applying — safe)
 ```
@@ -47,16 +55,17 @@ With Terraform (IaC):
 
 ## ☁️ Cloud Coverage
 
-| Cloud | Service | Status |
-|---|---|---|
-| AWS | EKS + VPC + ECR | ✅ Phase 4 Complete |
-| Azure | AKS + VNet | ✅ Phase 9 Complete |
-| GCP | GKE + VPC | ✅ Phase 9 Complete |
+| Cloud | Service | Region | Nodes | Resources | Status |
+|---|---|---|---|---|---|
+| AWS | EKS + VPC + ECR | ap-south-1 | t3.small x2 | 24 | ✅ Phase 4 Complete |
+| Azure | AKS + VNet + NAT | West US 2 | Standard_B2s_v2 x2 | 9 | ✅ Phase 9 Complete |
+| GCP | GKE + VPC + Cloud NAT | us-central1 | e2-medium x2 | 7 | ✅ Phase 10 Complete |
 
 ---
 
-## 🏗️ AWS Infrastructure Architecture
+## 🏗️ Architecture — All 3 Clouds
 
+### AWS EKS (Phase 4)
 ```
 AWS Region: ap-south-1
     │
@@ -74,6 +83,40 @@ AWS Region: ap-south-1
     └── ECR Repositories
         ├── studentsphere-backend
         └── studentsphere-frontend
+```
+
+### Azure AKS (Phase 9) — Production-Grade Private Nodes
+```
+Azure West US 2
+    │
+    ├── VNet (10.0.0.0/16)
+    │   ├── Public Subnet  (10.0.1.0/24) ← Load Balancer only
+    │   ├── Private Subnet (10.0.2.0/24) ← AKS Nodes (internet se hidden!)
+    │   ├── Public IP (Static)
+    │   └── NAT Gateway ← Nodes ka outbound internet
+    │
+    └── AKS Cluster (studentsphere-aks)
+        ├── Kubernetes v1.35.1
+        ├── Node Pool (Standard_B2s_v2 x2) ← private subnet mein
+        └── SystemAssigned Identity
+```
+
+### GCP GKE (Phase 10) — Production-Grade Private Nodes
+```
+GCP us-central1
+    │
+    ├── VPC Network
+    │   ├── Public Subnet  (10.0.1.0/24) ← Load Balancer only
+    │   ├── Private Subnet (10.0.2.0/24) ← GKE Nodes (internet se hidden!)
+    │   │   ├── Pods Range     (10.1.0.0/16)
+    │   │   └── Services Range (10.2.0.0/16)
+    │   ├── Cloud Router
+    │   └── Cloud NAT ← Nodes ka outbound internet
+    │
+    └── GKE Cluster (studentsphere-gke)
+        ├── Kubernetes v1.35.1
+        ├── enable_private_nodes: true
+        └── Node Pool (e2-medium x2)
 ```
 
 ---
@@ -96,7 +139,37 @@ AWS Region: ap-south-1
 
 ---
 
-## ⚡ How to Use
+## 📋 Azure Resources Created (9 total)
+
+| Resource | Type | Description |
+|---|---|---|
+| azurerm_resource_group | Resource Group | Container for all resources |
+| azurerm_virtual_network | VNet (10.0.0.0/16) | Main virtual network |
+| azurerm_subnet (public) | Subnet (10.0.1.0/24) | Load Balancer only |
+| azurerm_subnet (private) | Subnet (10.0.2.0/24) | AKS Nodes |
+| azurerm_public_ip | Static Public IP | NAT Gateway outbound IP |
+| azurerm_nat_gateway | NAT Gateway | Outbound internet for private nodes |
+| azurerm_nat_gateway_public_ip_association | Association | Link NAT to Public IP |
+| azurerm_subnet_nat_gateway_association | Association | Link NAT to Private Subnet |
+| azurerm_kubernetes_cluster | AKS Cluster | Managed Kubernetes v1.35.1 |
+
+---
+
+## 📋 GCP Resources Created (7 total)
+
+| Resource | Type | Description |
+|---|---|---|
+| google_compute_network | VPC Network | Main virtual network |
+| google_compute_subnetwork (public) | Subnet (10.0.1.0/24) | Load Balancer only |
+| google_compute_subnetwork (private) | Subnet (10.0.2.0/24) | GKE Nodes + Pod/Service ranges |
+| google_compute_router | Cloud Router | For Cloud NAT |
+| google_compute_router_nat | Cloud NAT | Outbound internet for private nodes |
+| google_container_cluster | GKE Cluster | Managed Kubernetes v1.35.1 |
+| google_container_node_pool | Node Pool | e2-medium worker nodes |
+
+---
+
+## ⚡ How to Use — AWS EKS
 
 ### Prerequisites
 
@@ -132,16 +205,12 @@ Default region name:   ap-south-1
 Default output format: json
 ```
 
----
-
-### Step 1 — Clone Repository
+### Step 1 — Clone + Navigate
 
 ```bash
 git clone https://github.com/manesaurabh1704-devops/terraform-multi-cloud-infra.git
 cd terraform-multi-cloud-infra/aws
 ```
-
----
 
 ### Step 2 — Terraform Init
 
@@ -151,16 +220,9 @@ terraform init
 
 Expected output:
 ```
-Initializing the backend...
-Initializing provider plugins...
-- Finding hashicorp/aws versions matching "~> 5.0"...
 - Installing hashicorp/aws v5.100.0...
-- Installed hashicorp/aws v5.100.0 (signed by HashiCorp)
-
 Terraform has been successfully initialized!
 ```
-
----
 
 ### Step 3 — Terraform Plan
 
@@ -173,16 +235,12 @@ Expected output:
 Plan: 24 to add, 0 to change, 0 to destroy.
 
 Changes to Outputs:
-  + cluster_endpoint  = (known after apply)
   + cluster_name      = "studentsphere-cluster"
   + cluster_version   = "1.34"
   + ecr_backend_url   = (known after apply)
   + ecr_frontend_url  = (known after apply)
-  + public_subnet_ids = (known after apply)
   + vpc_id            = (known after apply)
 ```
-
----
 
 ### Step 4 — Terraform Apply
 
@@ -193,25 +251,17 @@ terraform apply -auto-approve
 Expected output:
 ```
 aws_vpc.main: Creating...
-aws_vpc.main: Creation complete after 2s
-...
-aws_eks_cluster.main: Creating...
 aws_eks_cluster.main: Creation complete after 12m
-aws_eks_node_group.main: Creating...
 aws_eks_node_group.main: Creation complete after 2m
 
 Apply complete! Resources: 24 added, 0 changed, 0 destroyed.
 
 Outputs:
-cluster_endpoint  = "https://XXXX.gr7.ap-south-1.eks.amazonaws.com"
-cluster_name      = "studentsphere-cluster"
-cluster_version   = "1.34"
-ecr_backend_url   = "207457247776.dkr.ecr.ap-south-1.amazonaws.com/studentsphere-backend"
-ecr_frontend_url  = "207457247776.dkr.ecr.ap-south-1.amazonaws.com/studentsphere-frontend"
-vpc_id            = "vpc-XXXXXXXXXXXXXXXXX"
+cluster_name     = "studentsphere-cluster"
+ecr_backend_url  = "207457247776.dkr.ecr.ap-south-1.amazonaws.com/studentsphere-backend"
+ecr_frontend_url = "207457247776.dkr.ecr.ap-south-1.amazonaws.com/studentsphere-frontend"
+vpc_id           = "vpc-XXXXXXXXXXXXXXXXX"
 ```
-
----
 
 ### Step 5 — Configure kubectl
 
@@ -220,7 +270,6 @@ aws eks update-kubeconfig \
   --region ap-south-1 \
   --name studentsphere-cluster
 
-# Verify
 kubectl get nodes
 ```
 
@@ -230,8 +279,6 @@ NAME                                            STATUS   ROLES    AGE
 ip-192-168-62-10.ap-south-1.compute.internal    Ready    <none>   5m
 ip-192-168-86-169.ap-south-1.compute.internal   Ready    <none>   5m
 ```
-
----
 
 ### Step 6 — Destroy (To Save Cost)
 
@@ -246,23 +293,314 @@ Destroy complete! Resources: 24 destroyed.
 
 ---
 
-## 🔧 Customization — variables.tf
+## ⚡ How to Use — Azure AKS
 
+### Prerequisites
+
+```bash
+# Install Azure CLI
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+# Verify
+az --version
+```
+
+Expected output:
+```
+azure-cli 2.85.0
+```
+
+```bash
+# Login to Azure
+az login --use-device-code
+```
+
+```
+Open browser: https://microsoft.com/devicelogin
+Enter the code shown in terminal
+```
+
+```bash
+# Verify subscription
+az account show --output table
+
+# Register required providers
+az provider register --namespace Microsoft.ContainerService
+az provider register --namespace Microsoft.Network
+az provider register --namespace Microsoft.Compute
+
+# Verify
+az provider show -n Microsoft.ContainerService --query "registrationState"
+```
+
+Expected output:
+```
+"Registered"
+```
+
+### Step 1 — Navigate to Azure folder
+
+```bash
+cd terraform-multi-cloud-infra/azure
+```
+
+### Step 2 — Terraform Init
+
+```bash
+terraform init
+```
+
+Expected output:
+```
+- Installing hashicorp/azurerm v3.117.1...
+Terraform has been successfully initialized!
+```
+
+### Step 3 — Terraform Plan
+
+```bash
+terraform plan 2>&1 | tail -15
+```
+
+Expected output:
+```
+Plan: 9 to add, 0 to change, 0 to destroy.
+
+Changes to Outputs:
+  + cluster_endpoint  = (sensitive value)
+  + cluster_name      = "studentsphere-aks"
+  + private_subnet_id = (known after apply)
+  + public_subnet_id  = (known after apply)
+  + resource_group    = "studentsphere-rg"
+```
+
+### Step 4 — Terraform Apply
+
+```bash
+terraform apply -auto-approve
+```
+
+Expected output:
+```
+azurerm_resource_group.main: Creation complete after 16s
+azurerm_virtual_network.main: Creation complete after 12s
+azurerm_subnet.private: Creation complete after 7s
+azurerm_nat_gateway.main: Creation complete after 13s
+azurerm_subnet_nat_gateway_association.private: Creation complete after 7s
+azurerm_kubernetes_cluster.main: Creation complete after 4m17s
+
+Apply complete! Resources: 9 added, 0 changed, 0 destroyed.
+
+Outputs:
+cluster_name   = "studentsphere-aks"
+resource_group = "studentsphere-rg"
+```
+
+### Step 5 — Configure kubectl
+
+```bash
+az aks get-credentials \
+  --resource-group studentsphere-rg \
+  --name studentsphere-aks \
+  --overwrite-existing
+
+# Verify
+kubectl get nodes
+```
+
+Expected output:
+```
+NAME                              STATUS   ROLES    AGE   VERSION
+aks-default-xxxx-vmss000000       Ready    <none>   5m    v1.35.1
+aks-default-xxxx-vmss000001       Ready    <none>   5m    v1.35.1
+```
+
+### Step 6 — Give AKS Permission for LoadBalancer
+
+```bash
+# Required for LoadBalancer External IP to work
+AKS_IDENTITY=$(az aks show \
+  --resource-group studentsphere-rg \
+  --name studentsphere-aks \
+  --query "identity.principalId" -o tsv)
+
+VNET_ID=$(az network vnet show \
+  --resource-group studentsphere-rg \
+  --name studentsphere-vnet \
+  --query id -o tsv)
+
+az role assignment create \
+  --assignee $AKS_IDENTITY \
+  --role "Network Contributor" \
+  --scope $VNET_ID
+
+echo "Permission assigned!"
+```
+
+### Step 7 — Destroy (To Save Cost)
+
+```bash
+terraform destroy -auto-approve
+```
+
+Expected output:
+```
+Destroy complete! Resources: 9 destroyed.
+```
+
+---
+
+## ⚡ How to Use — GCP GKE
+
+### Prerequisites
+
+```bash
+# Install gcloud CLI
+curl https://sdk.cloud.google.com | bash
+source ~/.bashrc
+
+# Verify
+gcloud --version
+```
+
+Expected output:
+```
+Google Cloud SDK 564.0.0
+```
+
+```bash
+# Login to GCP
+gcloud auth login --no-launch-browser
+gcloud auth application-default login --no-launch-browser
+```
+
+```bash
+# Set project
+gcloud projects list
+gcloud config set project YOUR_PROJECT_ID
+
+# Enable required APIs
+gcloud services enable container.googleapis.com
+gcloud services enable compute.googleapis.com
+
+# Install GKE auth plugin
+gcloud components install gke-gcloud-auth-plugin
+
+# Verify
+gke-gcloud-auth-plugin --version
+```
+
+### Step 1 — Navigate to GCP folder
+
+```bash
+cd terraform-multi-cloud-infra/gcp
+```
+
+### Step 2 — Terraform Init
+
+```bash
+terraform init
+```
+
+Expected output:
+```
+- Installing hashicorp/google v5.x.x...
+Terraform has been successfully initialized!
+```
+
+### Step 3 — Terraform Plan
+
+```bash
+terraform plan 2>&1 | tail -15
+```
+
+Expected output:
+```
+Plan: 7 to add, 0 to change, 0 to destroy.
+
+Changes to Outputs:
+  + cluster_endpoint = (sensitive value)
+  + cluster_name     = "studentsphere-gke"
+  + project_id       = "project-a3e71bc3-7f01-47c1-ae7"
+  + region           = "us-central1"
+```
+
+### Step 4 — Terraform Apply
+
+```bash
+terraform apply -auto-approve
+```
+
+Expected output:
+```
+google_compute_network.main: Creating...
+google_compute_subnetwork.private: Creation complete
+google_compute_router_nat.main: Creation complete
+google_container_cluster.main: Creation complete after 10m
+google_container_node_pool.main: Creation complete after 2m
+
+Apply complete! Resources: 7 added, 0 changed, 0 destroyed.
+
+Outputs:
+cluster_name = "studentsphere-gke"
+project_id   = "project-a3e71bc3-7f01-47c1-ae7"
+region       = "us-central1"
+```
+
+### Step 5 — Configure kubectl
+
+```bash
+gcloud container clusters get-credentials studentsphere-gke \
+  --zone us-central1-a \
+  --project YOUR_PROJECT_ID
+
+# Verify
+kubectl get nodes
+```
+
+Expected output:
+```
+NAME                                                  STATUS   ROLES    AGE   VERSION
+gke-studentsphere-gk-studentsphere-no-xxxx-xxxx       Ready    <none>   5m    v1.35.1-gke
+gke-studentsphere-gk-studentsphere-no-xxxx-xxxx       Ready    <none>   5m    v1.35.1-gke
+```
+
+### Step 6 — Destroy (To Save Cost)
+
+```bash
+terraform destroy -auto-approve
+```
+
+Expected output:
+```
+Destroy complete! Resources: 7 destroyed.
+```
+
+---
+
+## 🔧 Customization
+
+### AWS — variables.tf
 ```hcl
-# Change region
-variable "aws_region" {
-  default = "us-east-1"    # Change to your preferred region
-}
+variable "aws_region"         { default = "us-east-1"  }  # Change region
+variable "node_instance_type" { default = "t3.medium"   }  # Upgrade VM
+variable "node_desired_size"  { default = 3             }  # More nodes
+```
 
-# Change instance type
-variable "node_instance_type" {
-  default = "t3.medium"    # Upgrade for more resources
-}
+### Azure — variables.tf
+```hcl
+variable "location"           { default = "East US"          }  # Change region
+variable "node_size"          { default = "Standard_B2s_v2"  }  # VM size
+variable "node_count"         { default = 2                  }  # Node count
+variable "kubernetes_version" { default = "1.35.1"           }  # K8s version
+```
 
-# Change node count
-variable "node_desired_size" {
-  default = 3              # Scale up for production
-}
+### GCP — variables.tf
+```hcl
+variable "region"            { default = "us-central1"   }  # Change region
+variable "zone"              { default = "us-central1-a"  }  # Change zone
+variable "node_machine_type" { default = "e2-medium"      }  # VM size
+variable "node_count"        { default = 2                }  # Node count
 ```
 
 ---
@@ -282,52 +620,50 @@ variable "node_desired_size" {
 
 ## 🐛 Troubleshooting
 
-### Problem 1 — AWS Credentials Not Found
+### AWS
 ```
 Error: No valid credential sources found
+Fix: aws configure
 
-Fix:
-aws configure
-# Enter your Access Key, Secret Key, Region
-```
-
-### Problem 2 — EKS Node Launch Failed
-```
 Error: InvalidParameterCombination - instance type not eligible
+Fix: Use t3.small for new/free accounts
 
-Fix: Use t3.small instead of t3.medium for new accounts
-variable "node_instance_type" {
-  default = "t3.small"
-}
-```
-
-### Problem 3 — Terraform State Conflict
-```
 Error: resource already exists
+Fix: terraform import aws_eks_cluster.main studentsphere-cluster
 
-Fix: Import existing resource
-terraform import aws_eks_cluster.main studentsphere-cluster
+Error: provider version conflict
+Fix: terraform init -upgrade
 ```
 
-### Problem 4 — Provider Version Conflict
+### Azure
 ```
-Error: provider registry.terraform.io/hashicorp/aws: no available releases
+Error: VM size not allowed in subscription
+Fix: Use Standard_B2s_v2
+     az vm list-skus --location westus2 --size Standard_B
 
-Fix:
-terraform init -upgrade
+Error: K8sVersionNotSupported
+Fix: az aks get-versions --location westus2 --output table
+     Use latest available (e.g. 1.35.1)
+
+Error: ServiceCidrOverlapExistingSubnetsCidr
+Fix: In aks.tf network_profile:
+     service_cidr   = "172.16.0.0/16"
+     dns_service_ip = "172.16.0.10"
+
+Error: LoadBalancer External IP stuck at pending
+Fix: Assign Network Contributor role (See Step 6)
 ```
 
-### Problem 5 — Cannot Scale Node Group
+### GCP
 ```
-Error: desired capacity can't be greater than max size
+Error: gke-gcloud-auth-plugin not found
+Fix: gcloud components install gke-gcloud-auth-plugin
 
-Fix: Increase max size first
-eksctl scale nodegroup \
-  --cluster studentsphere-cluster \
-  --name studentsphere-nodes \
-  --nodes 4 \
-  --nodes-max 5 \
-  --region ap-south-1
+Error: Billing account not found
+Fix: Enable billing at console.cloud.google.com/billing
+
+Error: Insufficient CPU for pods
+Fix: kubectl scale deployment backend --replicas=1 -n studentsphere
 ```
 
 ---
